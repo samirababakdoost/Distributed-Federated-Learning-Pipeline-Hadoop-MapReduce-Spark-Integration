@@ -1,0 +1,54 @@
+Distributed Data Processing & Federated Averaging Simulation Pipeline
+
+This project is a compact, end-to-end demonstration of how distributed data engineering and federated learning concepts meet in practice. A structured, multi-client dataset (data.csv, 172 records across three client identifiers) is aggregated with MapReduce-style logic, and the resulting global average then feeds a multi-round Federated Averaging (FedAvg) simulation that models how distributed clients would converge on a shared model update without exchanging raw data. The goal is to show a clear, reproducible pipeline that connects large-scale data processing patterns — Map, Shuffle, and Reduce — with the statistical core of federated learning, rather than to deliver a production deployment. Everything here is intentionally honest about what is computed, what is simulated, and what is not.
+Problem and Objective
+In many distributed systems, records are spread across several clients or data sources. Analyzing such data without moving everything into one central store requires splitting the computation into small local steps whose partial results are later merged into a global output. This project takes that exact path. The input file data.csv holds 172 records belonging to three client IDs. Task 1 computes the sum and record count per client using MapReduce logic. Task 2 then uses the resulting global average (total sum ÷ total count) as the starting point for a step-by-step FedAvg simulation, mirroring how a federated server would aggregate client updates round by round.
+Workflow
+The pipeline runs in two stages. In the Map phase, every input row is parsed into a key–value pair of the form client_id → (feature_value, 1). In the Reduce phase, all pairs sharing the same client_id are grouped, their values are summed, and their records are counted, producing one line per client with client_id, sum, count. From these two numbers, each client’s local average and the global average of the full dataset follow directly. This mirrors Hadoop Streaming semantics, where mapper and reducer are plain executables that read input line by line from standard input and emit key–value pairs on standard output, with the framework handling job submission and the shuffle between the two stages (Apache Hadoop Streaming documentation).
+In the second stage, the per-client aggregates are fed into the FedAvg simulation. Each round takes the current global value, applies small synthetic local updates to the client-level statistics, recomputes the global average, and records it. This is a conceptual simulation of federated averaging: no machine-learning model is actually trained, and the rounds are not claimed to run on a real Spark cluster.
+Data Aggregation Results
+Task 1 aggregation over the full 172-record dataset produced the following per-client results. These figures were verified directly against data.csv and match the expected output of the Task 1 MapReduce job.
+Client ID	Record Count	Sum of Values	Local Average
+client1	58	2197.60	37.8897
+client2	57	2381.80	41.7860
+client3	57	2568.60	45.0632
+Full dataset	172	7148.00	41.5581 (global)
+Federated Averaging Simulation Review
+The baseline global average computed from the full dataset is 41.5581 (7148.0 ÷ 172). The FedAvg simulation then ran five rounds, recording the global value after each round:
+Stage	Recorded Value
+Baseline	41.5581
+Round 1	41.4956
+Round 2	41.4813
+Round 3	41.5500
+Round 4	41.5592
+Round 5	41.6389
+These numbers illustrate how a global value evolves across successive aggregation rounds when clients contribute slightly perturbed local updates. They demonstrate the mechanics of round-based global aggregation, not the convergence of a trained model — the simulated values oscillate around the baseline rather than monotonically improving a loss or accuracy metric.
+Scope and Limitations
+The scope of this project is deliberately bounded. The dataset is small and structured, and the FedAvg component is a mathematical simulation (local means plus small random noise), implemented as a standalone Python script rather than a distributed PySpark job. Accordingly, the results in this README should not be read as: a benchmark of a real Hadoop or Spark cluster, the training of an actual machine-learning model, a privacy guarantee, or a security evaluation against adversarial (e.g., Byzantine) clients. The project demonstrates patterns and concepts; the task specification’s own docs (Task 3) treat performance analysis, fault tolerance, and real-world frameworks such as Flotta as directions for further study.
+Skills and Concepts
+Working through this project covers the following skills and concepts:
+•	Decomposing a data-processing problem into Map and Reduce stages
+•	Grouping and aggregating structured data by client identifier
+•	Computing sums, counts, and averages from key–value streams
+•	Hadoop Streaming execution semantics (stdin/stdout mapper and reducer executables)
+•	Conceptual understanding of global aggregation and the FedAvg protocol
+•	Distinguishing simulation from real distributed execution, and stating project limits honestly
+Current Repository Structure
+The repository currently contains the core dataset, the task specification documents, the pipeline source code, and the recorded outputs:
+federated-project/
+├── data.csv                              # Main dataset (172 client records)
+├── readme.md                             # Project overview and task specifications
+├── task_1.md                             # Hadoop MapReduce aggregation specification
+├── task_2.md                             # FedAvg simulation specification
+├── task_3.md                             # Performance, scalability, and Flotta analysis
+├── src/
+│   ├── hadoop_streaming/
+│   │   ├── mapper.py                     # Map phase: key–value extraction
+│   │   └── reducer.py                    # Reduce phase: per-client sum & count
+│   └── spark_job.py                      # FedAvg simulation engine (pure Python)
+└── outputs/
+    ├── part3_task1/
+    │   └── hadoop_aggregate_output.csv   # Per-client aggregation results
+    └── part3_task2/
+        └── global_average_rounds.csv     # FedAvg baseline + 5 recorded rounds
+No claims are made in this document about cluster deployment, real Hadoop/Spark executions, or features not present in the repository.
